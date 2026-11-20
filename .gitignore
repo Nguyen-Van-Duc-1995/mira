@@ -1,6 +1,10 @@
 # Dependencies
 node_modules/
 
+# Firebase config
+firebase-js-config.json
+
+
 # Next.js
 .next/
 out/
@@ -16,8 +20,9 @@ yarn-debug.log*
 yarn-error.log*
 
 # Environment
-.env*.local
 .env
+.env.local
+.env.*.local
 
 # Vercel
 .vercel/
