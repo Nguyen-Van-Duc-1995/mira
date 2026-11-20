@@ -1,6 +1,8 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { addDoc, collection, limit, onSnapshot, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 const PRESETS = [20000, 50000, 100000, 200000, 500000];
 const formatNumber = value => new Intl.NumberFormat('vi-VN').format(value);
@@ -38,7 +40,7 @@ function Hero() {
   );
 }
 
-function ProfileSidebar() {
+function ProfileSidebar({ wishes, wishesLoading, wishesError }) {
   return (
     <aside className="side-column profile-column" id="about">
       <section className="card creator-card">
@@ -52,8 +54,12 @@ function ProfileSidebar() {
           <a href="#donate" className="profile-button">Gửi Mira một chiếc ôm <span>↗</span></a>
         </div>
       </section>
-      <section className="card ranking-card" id="ranking"><div className="section-heading"><span className="heading-icon">🏆</span><div><h3>Top yêu thương</h3><p>Những trái tim ấm áp nhất</p></div><span className="week-tag">Tuần này</span></div>
-        <div className="empty-ranking"><div className="ranking-illustration"><span>♡</span><span>✦</span><span>♡</span></div><strong>Chưa có ai trong bảng xếp hạng</strong><p>Hãy là người đầu tiên gửi một lời chúc thật dễ thương nhé!</p></div>
+      <section className="card ranking-card" id="ranking" aria-live="polite">
+        <div className="section-heading"><span className="heading-icon">💌</span><div><h3>Lời chúc gần đây</h3><p>Những điều dễ thương đã được gửi</p></div><span className="week-tag">Mới nhất</span></div>
+        {wishesError && <p className="wish-list-error">{wishesError}</p>}
+        {wishesLoading && !wishesError && <p className="wish-list-info">Đang tải lời chúc…</p>}
+        {!wishesLoading && !wishesError && wishes.length === 0 && <div className="empty-ranking"><div className="ranking-illustration"><span>♡</span><span>✦</span><span>♡</span></div><strong>Chưa có lời chúc nào</strong><p>Hãy là người đầu tiên gửi một lời chúc thật dễ thương nhé!</p></div>}
+        {wishes.length > 0 && <div className="wish-list">{wishes.map(wish => <article className="wish-item" key={wish.id}><div className="wish-item-title"><span>♡</span><strong>{wish.name}</strong></div><p>{wish.message}</p></article>)}</div>}
       </section>
     </aside>
   );
@@ -68,6 +74,7 @@ function DonationForm() {
   const [message, setMessage] = useState('Chúc Mira livestream thật vui nha! 💗');
   const [step, setStep] = useState(1);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   const amountRef = useRef(null);
 
   const displayName = anonymous ? 'Ẩn danh' : name.trim() || 'Một người bạn dễ thương';
@@ -82,6 +89,10 @@ function DonationForm() {
       amountRef.current?.focus();
       return;
     }
+    if (!message.trim()) {
+      setError('Vui lòng nhập lời chúc trước khi tiếp tục.');
+      return;
+    }
     setError('');
     changeStep(2);
   };
@@ -93,6 +104,35 @@ function DonationForm() {
       return;
     }
     setAmount(value);
+  };
+  const saveWish = async () => {
+    if (saving) return;
+    if (!db) {
+      setError('Chưa cấu hình Firebase. Hãy kiểm tra file .env.local rồi build lại web.');
+      return;
+    }
+    const text = message.trim();
+    if (!text || text.length > 255) {
+      setError('Lời chúc phải có từ 1 đến 255 ký tự.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      // Chỉ ghi lời chúc; số tiền và email KHÔNG phải là giao dịch hay thông tin thanh toán.
+      await addDoc(collection(db, 'wishes'), {
+        name: displayName,
+        message: text,
+        anonymous,
+        createdAt: serverTimestamp(),
+      });
+      changeStep(3);
+    } catch (e) {
+      console.error('Lỗi lưu lời chúc:', e);
+      setError('Không thể lưu lời chúc. Vui lòng thử lại hoặc kiểm tra quyền Firestore.');
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <section className="card donation-card" id="donate" aria-labelledby="donateTitle">
@@ -125,17 +165,18 @@ function DonationForm() {
         <textarea id="message" maxLength={255} rows={4} placeholder="Viết điều gì đó thật dễ thương nhé..." value={message} onChange={e=>setMessage(e.target.value)} />
         <div className="wish-card"><span className="wish-icon">✨</span><div><strong>Điều ước nhỏ của Mira</strong><p>Được gặp thêm nhiều trái tim dịu dàng và cùng nhau tạo nên những kỷ niệm thật đẹp.</p></div></div>
         <button type="button" className="primary-button" onClick={next}>Tiếp tục gửi yêu thương <span>↗</span></button>
-        <p className="form-footnote">🔒 Bản thiết kế minh họa, chưa tích hợp thu tiền thật.</p>
+        <p className="form-footnote">🔒 Chỉ lưu tên và lời chúc công khai. Không lưu email hoặc xác nhận thanh toán.</p>
       </div>}
 
       {step === 2 && <div className="step-panel">
         <div className="payment-intro"><span>💜</span><h3>Chỉ một bước nữa thôi!</h3><p>Xem lại lời nhắn trước khi tiếp tục nhé.</p></div>
         <div className="summary-card"><div><span>Người gửi</span><strong>{displayName}</strong></div><div><span>Số tiền ủng hộ</span><strong>{formatMoney(amount)}</strong></div><div className="summary-note"><span>Lời nhắn</span><p>{displayMessage}</p></div></div>
-        <div className="demo-payment"><div className="demo-payment-symbol">♡</div><h4>Khu vực kết nối thanh toán</h4><p>Đây là giao diện demo. Để nhận thanh toán thực tế, cần tích hợp cổng thanh toán và xác thực giao dịch từ máy chủ.</p><span className="demo-pill">DEMO · KHÔNG THU TIỀN</span></div>
-        <div className="button-row"><button type="button" className="secondary-button" onClick={() => changeStep(1)}>← Quay lại</button><button type="button" className="primary-button" onClick={() => changeStep(3)}>Xem màn hình hoàn tất ↗</button></div>
+        <div className="demo-payment"><div className="demo-payment-symbol">♡</div><h4>Lưu lời chúc trên Firebase</h4><p>Lời chúc sẽ được lưu công khai. Số tiền chỉ mang tính minh họa, không có bất kỳ khoản thanh toán nào được thực hiện.</p><span className="demo-pill">LƯU LỜI CHÚC · KHÔNG THU TIỀN</span></div>
+        <div className="button-row"><button type="button" className="secondary-button" onClick={() => changeStep(1)}>← Quay lại</button><button type="button" className="primary-button" disabled={saving} onClick={saveWish}>{saving ? 'Đang lưu lời chúc…' : 'Gửi và lưu lời chúc ♡'}</button></div>
+        {error && <p className="error-message" role="alert">{error}</p>}
       </div>}
 
-      {step === 3 && <div className="step-panel"><div className="success-bloom">♡<span>✦</span></div><span className="overline success-overline">ONE LITTLE ACT OF LOVE</span><h3 className="success-title">Yêu thương đã được gửi…<br />trong bản xem thử! ♡</h3><p className="success-description">Cảm ơn bạn đã thử giao diện. Đây chỉ là mô phỏng luồng, chưa phát sinh thanh toán hoặc gửi dữ liệu đến máy chủ.</p><div className="summary-card success-summary"><div><span>Tên hiển thị</span><strong>{displayName}</strong></div><div><span>Số tiền đã chọn</span><strong>{formatMoney(amount)}</strong></div></div><button type="button" className="primary-button" onClick={() => changeStep(1)}>Viết lời nhắn mới <span>↗</span></button></div>}
+      {step === 3 && <div className="step-panel"><div className="success-bloom">♡<span>✦</span></div><span className="overline success-overline">ONE LITTLE ACT OF LOVE</span><h3 className="success-title">Lời chúc đã được lưu thành công! ♡</h3><p className="success-description">Cảm ơn bạn! Lời chúc đã được lưu vào Cloud Firestore và sẽ xuất hiện trong danh sách gần đây. Không có khoản thanh toán nào được thực hiện.</p><div className="summary-card success-summary"><div><span>Tên hiển thị</span><strong>{displayName}</strong></div><div className="summary-note"><span>Lời chúc</span><p>{displayMessage}</p></div></div><button type="button" className="primary-button" onClick={() => {setMessage(''); setName(''); setAnonymous(false); changeStep(1);}}>Viết lời nhắn mới <span>↗</span></button></div>}
     </section>
   );
 }
@@ -151,9 +192,32 @@ function ExtrasSidebar() {
 }
 
 export default function Home() {
+  const [wishes, setWishes] = useState([]);
+  const [wishesLoading, setWishesLoading] = useState(true);
+  const [wishesError, setWishesError] = useState('');
+
+  useEffect(() => {
+    if (!db) {
+      setWishesError('Firebase chưa được cấu hình.');
+      setWishesLoading(false);
+      return;
+    }
+    const recentWishes = query(collection(db, 'wishes'), orderBy('createdAt', 'desc'), limit(8));
+    const unsubscribe = onSnapshot(recentWishes, snapshot => {
+      setWishes(snapshot.docs.map(item => ({ id: item.id, ...item.data() })));
+      setWishesLoading(false);
+      setWishesError('');
+    }, error => {
+      console.error('Không thể tải lời chúc:', error);
+      setWishesError('Không thể tải lời chúc. Vui lòng kiểm tra quyền Firestore.');
+      setWishesLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
   return <><div className="ambient ambient-one" aria-hidden="true" /><div className="ambient ambient-two" aria-hidden="true" />
     <div className="site-wrap"><Header /><main><Hero />
-      <section className="main-grid" aria-label="Không gian của Mira"><ProfileSidebar /><DonationForm /><ExtrasSidebar /></section>
+      <section className="main-grid" aria-label="Không gian của Mira"><ProfileSidebar wishes={wishes} wishesLoading={wishesLoading} wishesError={wishesError} /><DonationForm /><ExtrasSidebar /></section>
       <section className="bottom-banner"><span>✳</span><div><strong>Thế giới đẹp hơn nhờ những điều tử tế.</strong><p>Thank you for being part of this little universe ♡</p></div><span>♡</span></section>
     </main><footer className="footer"><a className="footer-brand" href="#home">✦ Mira World ♡</a><span>Made with love, a little stardust and lots of heart.</span><span>© 2026 Mira World · Demo UI</span></footer></div>
   </>;

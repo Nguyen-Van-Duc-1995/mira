@@ -15,3 +15,13 @@
 
 /* Keep the decorative heart artwork independent of CSS grid layout. */
 .love-illustration{display:block}.love-planet{position:absolute;top:10px;left:calc(50% - 45px);transform:rotate(-8deg)}
+
+/* Guestbook: danh sách lời chúc lấy trực tiếp từ Cloud Firestore. */
+.wish-list{margin-top:16px;display:flex;flex-direction:column;gap:10px}
+.wish-item{border:1px solid #efe6f7;border-radius:13px;background:#fcfaff;padding:12px 13px;overflow-wrap:anywhere}
+.wish-item-title{display:flex;align-items:center;gap:7px;font-size:11px;color:#7252ac}
+.wish-item-title>span{color:#d89bcf;font-size:17px}
+.wish-item p{font-size:10px;line-height:1.7;color:#8c7f9b;margin:5px 0 0;white-space:pre-wrap}
+.wish-list-info,.wish-list-error{font-size:10px;line-height:1.8;color:#9286a1;margin:17px 0 3px}
+.wish-list-error{color:#c15d78}
+.primary-button:disabled{opacity:.6;cursor:wait;transform:none;box-shadow:none}
